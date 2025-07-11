@@ -5,45 +5,86 @@ on:
   push:
     branches:
       - main
-      - 'feature/*'
-
-env:
-    MONGO_URI: 'mongodb+srv://supercluster.d83jj.mongodb.net/superData'
-    MONGO_USERNAME: ${{ vars.MONGO_USERNAME }}
-    MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}     
+      - 'feature/*'  
 
 jobs:
- unit-testing:
-   name: Unit testing
-   runs-on: ubuntu-latest
-   steps:
-     - name: checkout repository
-       uses: actions/checkout@v4
+    unit-testing:
+        name: Unit Testing
+        services:
+          mongo-db:
+            image: siddharth67/mongo-db:non-prod
+            ports:
+              - 27017:27017
+        env:
+            MONGO_URI: 'mongodb//localhost:27017/superData'
+            MONGO_USERNAME: non-prod-user
+            MONGO_PASSWORD: non-prod-password
+        strategy:
+            matrix:
+                nodejs_version: [18, 20]
+                operating_system: [ubuntu-latest]
+                exclude:
+                    - nodejs_version: 18
+                      operating_system: macos-latest
+        runs-on: ${{ matrix.operating_system }}
+        steps:
+        - name: Checkout Repository
+          uses: actions/checkout@v4
 
-     - name: setup nodejs version - 18
-       uses: actions/setup-node@v3
-       with:
-         node-version: 18
+        - name: Setup NodeJS Version - ${{ matrix.nodejs_version }}
+          uses: actions/setup-node@v3
+          with:
+            node-version: ${{ matrix.nodejs_version }}
 
-     - name: Install Dependencies
-       run: npm install
+        - name: Cache NPM dependencies
+          uses: actions/cache@v3
+          with:
+            path: node_modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}       
 
-     - name: unit testing
-       run: npm test
+        - name: Install Dependencies
+          run: npm install
 
-     - name: Archive and upload Test Result
-       uses: actions/upload-artifact@v4
-       with:
-         name: Mocha-Test-Result
-         path: test-results.xml
+        - name: Unit Testing
+          id: nodejs-unit-testing-step
+          run: npm test
 
-     - name: check code coverage
-       run: npm run coverage
-       continue-on-error: true
+        - name: Archive Test Result
+          if:  always()
+          uses: actions/upload-artifact@v4
+          with:
+            name: Mocha-Test-Result
+            path: test-results.xml
 
-     - name: Archive Test Result
-       uses: actions/upload-artifact@v4
-       with:
-         name: Code-Coverage-Result
-         path: coverage
-         retention-days: 5
+    code-coverage:
+        name: Code Coverage
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout Repository
+          uses: actions/checkout@v4
+
+        - name: Setup NodeJS Version - 18
+          uses: actions/setup-node@v3
+          with:
+            node-version: 18
+
+        - name: Cache NPM dependencies
+          uses: actions/cache@v3
+          with:
+            path: node_modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+
+        - name: Install Dependencies
+          run: npm install
+
+        - name: Check Code Coverage
+          continue-on-error: true
+          run: npm run coverage
+
+        - name: Archive Test Result
+          uses: actions/upload-artifact@v4
+          with:
+            name: Code-Coverage-Result
+            path: coverage
+            retention-days: 5
